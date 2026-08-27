@@ -1,5 +1,7 @@
-import weather_fetcher as weather
 import pandas as pd
+
+from app.core.config import DATA_DIR
+from app.services import weather
 
 print("Insert year(s) (e.g. 2021, 2022, etc): ")
 years = input().split(", ")
@@ -42,7 +44,7 @@ if choice in ["y", ""]:
     print("\nData Pulled. What is the # of this training dataset?")
     number = int(input().strip())
 
-    filename = f"data/training_dataset_{number}.csv"
+    filename = DATA_DIR / f"training_dataset_{number}.csv"
     final_df.to_csv(filename, index=False)
 
     print(f"\nDone. Saved {len(final_df)} rows to {filename}")

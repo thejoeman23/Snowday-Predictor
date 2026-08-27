@@ -13,6 +13,19 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8080
 
 The API will be available at `http://localhost:8080`.
 
+## Structure
+
+```text
+app/
+  api/            FastAPI route handlers
+  core/           Shared configuration and filesystem paths
+  ml/             Model loading, explanations, and training helpers
+  services/       Open-Meteo and Environment Canada integrations
+  scripts/        One-off data collection scripts
+data/             CSV training and snow-day date data
+models/           Saved model artifacts
+```
+
 ## Docker
 
 Build and run from this `backend/` directory:

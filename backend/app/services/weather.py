@@ -1,19 +1,17 @@
-import requests
-import pandas as pd
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-from pathlib import Path
 
-# ---------------- CONFIG ----------------
+import pandas as pd
+import requests
 
-LATITUDE = 44.569
-LONGITUDE = -80.98
+from app.core.config import (
+    DEFAULT_LATITUDE,
+    DEFAULT_LONGITUDE,
+    LOCAL_TIMEZONE,
+    SNOW_DAY_DATES_PATH,
+)
 
-BASE_DIR = Path(__file__).resolve().parent
-CSV_PATH = BASE_DIR / "data" / "snow_day_dates.csv"
-SNOW_DAYS = pd.read_csv(CSV_PATH)
-
-# ----------------------------------------
+SNOW_DAYS = pd.read_csv(SNOW_DAY_DATES_PATH)
 
 
 def is_weekday(date: datetime) -> bool:
@@ -31,9 +29,13 @@ def safe_sum(values):
     values = [v for v in values if v is not None]
     return sum(values) if values else 0
 
-from datetime import datetime, timedelta
-
-def fetch_weather(start_date: str, end_date: str, lat: float = LATITUDE, lon: float = LONGITUDE, use_forecast: bool = False) -> dict:
+def fetch_weather(
+    start_date: str,
+    end_date: str,
+    lat: float = DEFAULT_LATITUDE,
+    lon: float = DEFAULT_LONGITUDE,
+    use_forecast: bool = False,
+) -> dict:
 
     if use_forecast:
         url = "https://api.open-meteo.com/v1/forecast"
@@ -229,16 +231,16 @@ def t() -> pd.DataFrame:
     return get_data_within_timerange(
         monday.strftime("%Y-%m-%d"),
         friday.strftime("%Y-%m-%d"),
-        lat=LATITUDE,
-        lon=LONGITUDE,
+        lat=DEFAULT_LATITUDE,
+        lon=DEFAULT_LONGITUDE,
         use_forecast=True
     )
 
 def get_this_weeks_data(lat: float = 0, lon: float = 0) -> pd.DataFrame:
     if lat == 0 and lon == 0:
-        lat, lon = LATITUDE, LONGITUDE
+        lat, lon = DEFAULT_LATITUDE, DEFAULT_LONGITUDE
 
-    tz = ZoneInfo("America/Toronto")
+    tz = ZoneInfo(LOCAL_TIMEZONE)
     now = datetime.now(tz)
     today = now.date()
 

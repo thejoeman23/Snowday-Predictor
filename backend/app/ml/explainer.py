@@ -1,5 +1,5 @@
 
-def GetExplanations(data, model):
+def get_explanations(data, model):
     explanations = {}
 
     for i in data.index:
@@ -53,7 +53,7 @@ def GetExplanations(data, model):
         #         "impact": round(float(shap_val), 3),
         #         "value": round(float(value), 2),
         #         "direction": "up" if shap_val > 0 else "down",
-        #         "humanized_value": HumanizeFeatureValue(name, value, shap_val),
+        #         "humanized_value": humanize_feature_value(name, value, shap_val),
         #     }
         #     for name, shap_val, value in top
         # ]
@@ -75,7 +75,7 @@ def GetExplanations(data, model):
 
     return explanations
 
-def HumanizeFeatureValue(feature, value, shap_value):
+def humanize_feature_value(feature, value, shap_value):
     """
     Convert a raw feature value into a human-friendly label.
     Uses predefined buckets for each feature.

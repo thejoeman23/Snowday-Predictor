@@ -1,9 +1,9 @@
 import pandas as pd
-import numpy as np
 import pickle
-import weather_fetcher as weather
 
-from explainer import GetExplanations
+from app.core.config import DATA_DIR, MODEL_PATH
+from app.ml.explainer import get_explanations
+from app.services import weather
 
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
@@ -19,7 +19,7 @@ THRESHOLD = 0.35  # <---- KEY CHANGE (was implicitly 0.5 before)
 
 # ----------------------------------------
 
-def Train(data):
+def train(data):
     global MODEL
 
     x = data.drop(columns=["date", "snow_day"])
@@ -57,7 +57,7 @@ def Train(data):
 
     MODEL = grid.best_estimator_
 
-    with open("model.pkl", "wb") as f:
+    with open(MODEL_PATH, "wb") as f:
         pickle.dump(MODEL, f)
 
     print("BEST MODEL SETTINGS:")
@@ -82,7 +82,7 @@ def Train(data):
     print()
 
 
-def PrintFeatureImportance():
+def print_feature_importance():
     importances = MODEL.feature_importances_
 
     features = TRAINING_DATA.drop(columns=["date", "snow_day"]).columns
@@ -96,13 +96,13 @@ def PrintFeatureImportance():
         print(f"- {row['feature']}")
 
 
-def Test(data):
+def test(data):
     X = data.drop(columns=["date", "snow_day"])
 
-    with open("../api/model.pkl", "rb") as f:
+    with open(MODEL_PATH, "rb") as f:
         MODEL = pickle.load(f)
 
-    all_explanations = GetExplanations(X, MODEL)
+    all_explanations = get_explanations(X, MODEL)
 
     probs = MODEL.predict_proba(X)[:, 1]
 
@@ -133,25 +133,20 @@ def Test(data):
 def add_predictions(data):
     X = data.drop(columns=["date", "snow_day"])
 
-    with open("../api/model.pkl", "rb") as f:
+    with open(MODEL_PATH, "rb") as f:
         MODEL = pickle.load(f)
 
     probs = MODEL.predict_proba(X)[:, 1]
 
     data["prob"] = (probs * 100).round().astype(int)
 
-    data.to_csv("data/training_dataset_7.csv", index=False)
+    data.to_csv(DATA_DIR / "training_dataset_7.csv", index=False)
 
 # ---------------- RUN ----------------
 
 #TRAINING_DATA = pd.read_csv("data/training_dataset_6.csv")
 
 
-TESTING_DATA = weather.get_this_weeks_data()
-
-#add_predictions(TRAINING_DATA)
-
-#Train(TRAINING_DATA)
-#PrintFeatureImportance()
-
-Test(TESTING_DATA)
+if __name__ == "__main__":
+    testing_data = weather.get_this_weeks_data()
+    test(testing_data)
