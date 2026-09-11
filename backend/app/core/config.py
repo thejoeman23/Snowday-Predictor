@@ -13,6 +13,7 @@ LOCAL_TIMEZONE = "America/Toronto"
 
 CORS_ORIGINS = [
     "https://snowdaypredictor.io",
+    "https://snowyay.ca",
     "http://127.0.0.1:5500",
     "http://192.168.2.129:5500",
     "http://localhost:3000",
