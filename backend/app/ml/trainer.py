@@ -1,13 +1,23 @@
-import pandas as pd
 import pickle
+import sys
+from pathlib import Path
+
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    precision_score,
+    recall_score,
+)
+from sklearn.model_selection import GridSearchCV, train_test_split
+
+if __name__ == "__main__" and __package__ is None:
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from app.core.config import DATA_DIR, MODEL_PATH
 from app.ml.explainer import get_explanations
 from app.services import weather
-
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, recall_score, precision_score
 
 # ---------------- CONFIG ----------------
 
@@ -57,8 +67,8 @@ def train(data):
 
     MODEL = grid.best_estimator_
 
-    with open(MODEL_PATH, "wb") as f:
-        pickle.dump(MODEL, f)
+    # with open(MODEL_PATH, "wb") as f:
+    #     pickle.dump(MODEL, f)
 
     print("BEST MODEL SETTINGS:")
     print(grid.best_params_)
@@ -82,10 +92,10 @@ def train(data):
     print()
 
 
-def print_feature_importance():
+def print_feature_importance(data):
     importances = MODEL.feature_importances_
 
-    features = TRAINING_DATA.drop(columns=["date", "snow_day"]).columns
+    features = data.drop(columns=["date", "snow_day"]).columns
     importance_df = pd.DataFrame({
         "feature": features,
         "importance": importances
@@ -142,11 +152,16 @@ def add_predictions(data):
 
     data.to_csv(DATA_DIR / "training_dataset_7.csv", index=False)
 
-# ---------------- RUN ----------------
 
-#TRAINING_DATA = pd.read_csv("data/training_dataset_6.csv")
+def load_training_data(filename: str = "training_dataset_1.csv") -> pd.DataFrame:
+    return pd.read_csv(DATA_DIR / filename)
+
+
+def main() -> None:
+    training_data = load_training_data()
+    train(training_data)
+    print_feature_importance(training_data)
 
 
 if __name__ == "__main__":
-    testing_data = weather.get_this_weeks_data()
-    test(testing_data)
+    main()

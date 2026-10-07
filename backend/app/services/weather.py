@@ -1,10 +1,16 @@
+import sys
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 
+if __name__ == "__main__" and __package__ is None:
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
+
 from app.core.config import (
+    DATA_DIR,
     DEFAULT_LATITUDE,
     DEFAULT_LONGITUDE,
     LOCAL_TIMEZONE,
@@ -18,11 +24,10 @@ SNOW_DAY_SET = set(SNOW_DAYS["date"].astype(str))
 def is_weekday(day: date) -> bool:
     return day.weekday() < 5
 
-HOURLY_START = 4
-HOURLY_END = 9
-HOURLY_RANGE = range(HOURLY_START, HOURLY_END + 1)
 SNOW_WEATHER_CODES = {71, 73, 75, 77, 85, 86}
 FREEZING_RAIN_CODES = {51, 53, 55, 61, 63, 65, 66, 67}
+FIRST_SCHOOL_MORNING_HOURS = range(8)
+FREEZING_RAIN_LOOKAHEAD_HOURS = 17
 
 
 def format_weather_date(value: str | date | datetime) -> str:
@@ -67,14 +72,25 @@ def fetch_weather(
     }
 
     r = requests.get(url, params=params)
+    r.raise_for_status()
     return r.json()
+
+
+def safe_mean(values):
+    values = [value for value in values if value is not None]
+    return sum(values) / len(values) if values else 0
+
+
+def safe_sum(values):
+    values = [value for value in values if value is not None]
+    return sum(values) if values else 0
 
 
 def build_hourly_dataframe(hourly: dict) -> pd.DataFrame:
     df = pd.DataFrame(hourly)
     df["time"] = pd.to_datetime(df["time"])
     df["date"] = df["time"].dt.date.astype(str)
-    return df[df["time"].dt.hour.isin(HOURLY_RANGE)]
+    return df
 
 
 def build_daily_dataframe(daily: dict) -> pd.DataFrame:
@@ -83,36 +99,82 @@ def build_daily_dataframe(daily: dict) -> pd.DataFrame:
     return df.set_index("date")
 
 
-def build_feature_row(day: str, hourly: pd.DataFrame, daily: pd.Series) -> dict:
-    snowfall_4_9am = hourly["snowfall"].sum()
-    precipitation_4_9am = hourly["precipitation"].sum()
+def build_feature_row(
+    day: str,
+    hourly: pd.DataFrame,
+    daily: pd.Series,
+    previous_day_hourly: pd.DataFrame | None = None,
+) -> dict:
+    hourly = hourly.reset_index(drop=True)
+    today_temp = hourly["temperature_2m"].tolist()
+    today_precipitation = hourly["precipitation"].tolist()
+    today_snow = hourly["snowfall"].tolist()
+    today_wind = hourly["wind_speed_10m"].tolist()
+    today_wind_gusts = hourly["wind_gusts_10m"].tolist()
+    today_dew = hourly["dew_point_2m"].tolist()
+    today_weather_code = hourly["weather_code"].tolist()
+
+    previous_snow = (
+        previous_day_hourly["snowfall"].tolist()
+        if previous_day_hourly is not None
+        else []
+    )
+
+    snowfall_overnight = safe_sum(today_snow[:8])
+    snowfall_24h = safe_sum(today_snow)
+    precipitation_overnight = safe_sum(today_precipitation[:8])
+    precipitation_24h = safe_sum(today_precipitation)
     temp_min = daily["temperature_2m_min"]
 
-    return {
+    row = {
         "date": day,
         "snow_day": int(day in SNOW_DAY_SET),
-        "snowfall_4_9am": snowfall_4_9am,
-        "precipitation_4_9am": precipitation_4_9am,
-        "temperature_4_9am_min": hourly["temperature_2m"].min(),
-        "temperature_4_9am_avg": hourly["temperature_2m"].mean(),
-        "wind_speed_4_9am_avg": hourly["wind_speed_10m"].mean(),
-        "wind_gusts_4_9am_max": hourly["wind_gusts_10m"].max(),
-        "dewpoint_4_9am_avg": hourly["dew_point_2m"].mean(),
-        "snow_weather_code_4_9am": int(
-            hourly["weather_code"].isin(SNOW_WEATHER_CODES).any()
-        ),
-        "freezing_rain": int(
-            hourly["weather_code"].isin(FREEZING_RAIN_CODES).any()
-            and -2 <= temp_min <= 1
-        ),
-        "temp_min": temp_min,
-        "daily_wind_gusts_max": daily["wind_gusts_10m_max"],
-        "no_snowfall_4_9am_penalty": (
-            2 if snowfall_4_9am == 0
-            else 1 if snowfall_4_9am < 1
+        "snowfall_last_24h": (
+            safe_sum(previous_snow[7:]) + snowfall_overnight
+            if previous_snow
             else 0
         ),
+        "snowfall_last_12h": (
+            safe_sum(previous_snow[20:]) + snowfall_overnight
+            if previous_snow
+            else 0
+        ),
+        "snowfall_overnight": snowfall_overnight,
+        "snowfall_24h": snowfall_24h,
+        "precipitation_overnight": precipitation_overnight,
+        "precipitation_24h": precipitation_24h,
+        "no_snowfall_penalty": (
+            2 if snowfall_24h == 0
+            else 1 if snowfall_overnight < 1
+            else 0
+        ),
+        "freezing_rain": (
+            any(
+                code in FREEZING_RAIN_CODES
+                for code in today_weather_code[:FREEZING_RAIN_LOOKAHEAD_HOURS]
+            )
+            and -2 <= temp_min <= 1
+        ),
+        "temp_min_overnight": temp_min,
+        "wind_speed_avg_overnight": safe_mean(today_wind[:8]),
+        "wind_gusts_max_overnight": daily["wind_gusts_10m_max"],
+        "dewpoint_avg_overnight": safe_mean(today_dew[:8]),
     }
+
+    has_snow_weather_code = any(code in SNOW_WEATHER_CODES for code in today_weather_code)
+    for hour in FIRST_SCHOOL_MORNING_HOURS:
+        row[f"temperature{hour}"] = today_temp[hour] if hour < len(today_temp) else 0
+        row[f"precipitation{hour}"] = (
+            today_precipitation[hour] if hour < len(today_precipitation) else 0
+        )
+        row[f"snowfall{hour}"] = today_snow[hour] if hour < len(today_snow) else 0
+        row[f"wind_speed{hour}"] = today_wind[hour] if hour < len(today_wind) else 0
+        row[f"wind_gusts{hour}"] = (
+            today_wind_gusts[hour] if hour < len(today_wind_gusts) else 0
+        )
+        row[f"weather_code{hour}"] = has_snow_weather_code
+
+    return row
 
 
 def weekdays_between(start_day: date, end_day: date):
@@ -126,8 +188,8 @@ def weekdays_between(start_day: date, end_day: date):
 def get_data_within_timerange(
     start_date: str,
     end_date: str,
-    lat: float,
-    lon: float,
+    lat: float = DEFAULT_LATITUDE,
+    lon: float = DEFAULT_LONGITUDE,
     use_forecast: bool = False,
 ) -> pd.DataFrame:
 
@@ -147,13 +209,28 @@ def get_data_within_timerange(
         use_forecast=use_forecast,
     )
 
-    hourly_by_date = build_hourly_dataframe(data["hourly"]).groupby("date")
+    hourly_by_date = {
+        group_date: group
+        for group_date, group in build_hourly_dataframe(data["hourly"]).groupby("date")
+    }
     daily_by_date = build_daily_dataframe(data["daily"])
+    previous_day_hourly = None
 
-    for day in weekdays_between(start_day, end_day):
-        rows.append(
-            build_feature_row(day, hourly_by_date.get_group(day), daily_by_date.loc[day])
-        )
+    current_day = start_day
+    while current_day <= end_day:
+        day = current_day.isoformat()
+        hourly = hourly_by_date.get(day)
+        if hourly is None or day not in daily_by_date.index:
+            current_day += timedelta(days=1)
+            continue
+
+        if is_weekday(current_day):
+            rows.append(
+                build_feature_row(day, hourly, daily_by_date.loc[day], previous_day_hourly)
+            )
+
+        previous_day_hourly = hourly
+        current_day += timedelta(days=1)
 
     return pd.DataFrame(rows)
 
@@ -206,5 +283,27 @@ def save_to_file(data: pd.DataFrame, filename: str):
     data.to_csv(filename, index=False)
     print(f"Saved {len(data)} rows to {filename}")
 
-data = t()
-save_to_file(data, "this week.csv")
+
+def build_training_dataset(
+    start_date: str = "2024-11-15",
+    end_date: str = "2026-01-30",
+    output_filename: str = "training_dataset_6.csv",
+    lat: float = DEFAULT_LATITUDE,
+    lon: float = DEFAULT_LONGITUDE,
+) -> pd.DataFrame:
+    data = get_data_within_timerange(
+        start_date,
+        end_date,
+        lat=lat,
+        lon=lon,
+    )
+    save_to_file(data, str(DATA_DIR / output_filename))
+    return data
+
+
+def main() -> None:
+    build_training_dataset()
+
+
+if __name__ == "__main__":
+    main()
