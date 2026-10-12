@@ -20,7 +20,9 @@ async def predict(lat: float, lon: float):
     for _, row in data.iterrows():
         result = {
             "weekday": row["date"],
-            "snow_day_probability": float(round(row["snow_day_probability"] * 100)),
+            "snowyay_prediction": float(round(row["snow_day_probability"] * 100)),
+            "instantweather_prediction": "",
+            "snowdaypredictor_prediction": "",
         }
         results.append(result)
 
